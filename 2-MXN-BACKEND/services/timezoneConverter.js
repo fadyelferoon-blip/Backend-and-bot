@@ -47,11 +47,22 @@ class TimezoneConverter {
    * @returns {Object} Next signal with countdown info
    */
   findNextSignal(signals, userTimezoneOffset) {
+    // ✅ Get current time in user's timezone (not server timezone!)
     const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentSecond = now.getSeconds();
+    const utcHour = now.getUTCHours();
+    const utcMinute = now.getUTCMinutes();
+    const utcSecond = now.getUTCSeconds();
+    
+    // Calculate user's current time
+    let currentHour = utcHour + userTimezoneOffset;
+    if (currentHour >= 24) currentHour -= 24;
+    if (currentHour < 0) currentHour += 24;
+    
+    const currentMinute = utcMinute;
+    const currentSecond = utcSecond;
     const currentTotalSeconds = currentHour * 3600 + currentMinute * 60 + currentSecond;
+    
+    console.log(`⏰ Current time (UTC+${userTimezoneOffset}): ${currentHour}:${currentMinute}:${currentSecond}`);
 
     // Convert all signals to user timezone
     const convertedSignals = signals.map(signal => {
