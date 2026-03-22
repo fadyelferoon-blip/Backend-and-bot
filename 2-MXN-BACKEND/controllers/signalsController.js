@@ -18,9 +18,39 @@ exports.generateMXNSignals = async (req, res) => {
     const putSignals = await signalAnalyzer.generateMXNSignals('PUT');
     const callSignals = await signalAnalyzer.generateMXNSignals('CALL');
 
+    // 🎯 LOG ALL SIGNALS
+    console.log('\n╔══════════════════════════════════════════════════════════╗');
+    console.log('║         📊 MXN SIGNALS ANALYSIS RESULTS                  ║');
+    console.log('╚══════════════════════════════════════════════════════════╝\n');
+    
+    console.log(`🔴 PUT Signals Found: ${putSignals.length}`);
+    putSignals.slice(0, 10).forEach((signal, idx) => {
+      console.log(`   ${idx + 1}. ⏰ ${signal.time} | 📈 ${signal.winrate}% | 🎯 ${signal.pair}`);
+    });
+    
+    console.log(`\n🟢 CALL Signals Found: ${callSignals.length}`);
+    callSignals.slice(0, 10).forEach((signal, idx) => {
+      console.log(`   ${idx + 1}. ⏰ ${signal.time} | 📈 ${signal.winrate}% | 🎯 ${signal.pair}`);
+    });
+    
+    console.log('\n' + '═'.repeat(60) + '\n');
+
     // Convert to user's timezone and find next signals
     const convertedPutSignals = timezoneConverter.findNextSignal(putSignals, userTimezone);
     const convertedCallSignals = timezoneConverter.findNextSignal(callSignals, userTimezone);
+    
+    // 🎯 LOG CONVERTED SIGNALS
+    console.log(`🌍 User Timezone: UTC+${userTimezone}\n`);
+    console.log(`🔴 Next PUT Signals (User Time):`);
+    convertedPutSignals.slice(0, 5).forEach((signal, idx) => {
+      console.log(`   ${idx + 1}. ⏰ ${signal.localTime} | ⏳ ${signal.minutesUntil}min | 📈 ${signal.winrate}%`);
+    });
+    
+    console.log(`\n🟢 Next CALL Signals (User Time):`);
+    convertedCallSignals.slice(0, 5).forEach((signal, idx) => {
+      console.log(`   ${idx + 1}. ⏰ ${signal.localTime} | ⏳ ${signal.minutesUntil}min | 📈 ${signal.winrate}%`);
+    });
+    console.log('\n' + '═'.repeat(60) + '\n');
 
     // Get the very next signal (closest one)
     const nextPut = convertedPutSignals[0];
@@ -46,11 +76,25 @@ exports.generateMXNSignals = async (req, res) => {
     }
 
     if (!nextSignal) {
+      console.log('⚠️  No signals available for today');
       return res.json({
         success: false,
         message: 'No signals available for today'
       });
     }
+
+    // 🎯 LOG SELECTED SIGNAL
+    console.log('╔══════════════════════════════════════════════════════════╗');
+    console.log('║         ⭐ RECOMMENDED SIGNAL                            ║');
+    console.log('╚══════════════════════════════════════════════════════════╝\n');
+    console.log(`   Type: ${nextSignal.type === 'PUT' ? '🔴 PUT' : '🟢 CALL'}`);
+    console.log(`   Pair: ${nextSignal.pair}`);
+    console.log(`   Time (User): ${nextSignal.localTime}`);
+    console.log(`   Time (Bot): ${nextSignal.time}`);
+    console.log(`   Winrate: 📈 ${nextSignal.winrate}%`);
+    console.log(`   Countdown: ⏳ ${nextSignal.minutesUntil} minutes`);
+    console.log(`   Seconds Until: ${nextSignal.secondsUntil}s`);
+    console.log('\n' + '═'.repeat(60) + '\n');
 
     res.json({
       success: true,
