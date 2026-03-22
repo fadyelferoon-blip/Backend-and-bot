@@ -1,3 +1,9 @@
+const signalAnalyzer = require('../services/signalAnalyzer');
+const timezoneConverter = require('../services/timezoneConverter');
+
+/**
+ * POST /api/signals/mxn
+ */
 exports.generateMXNSignals = async (req, res) => {
   try {
     const { uid, deviceId, timezone } = req.body;
@@ -11,8 +17,9 @@ exports.generateMXNSignals = async (req, res) => {
 
     const userTimezone = timezone ? parseInt(timezone) : 2;
 
-    console.log(`🔥 START for ${uid}`);
+    console.log(`🔥 Fetching MXN signals for ${uid} (UTC+${userTimezone})`);
 
+    // 🛡️ Timeout function
     const withTimeout = (promise, ms) => {
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout exceeded')), ms)
@@ -23,24 +30,29 @@ exports.generateMXNSignals = async (req, res) => {
     let putSignals = [];
     let callSignals = [];
 
+    // ✅ GET PUT
     try {
       putSignals = await withTimeout(
         signalAnalyzer.generateMXNSignals('PUT'),
         15000
       );
+      console.log(`✅ PUT signals: ${putSignals?.length || 0}`);
     } catch (err) {
       console.error('❌ PUT ERROR:', err.message);
     }
 
+    // ✅ GET CALL
     try {
       callSignals = await withTimeout(
         signalAnalyzer.generateMXNSignals('CALL'),
         15000
       );
+      console.log(`✅ CALL signals: ${callSignals?.length || 0}`);
     } catch (err) {
       console.error('❌ CALL ERROR:', err.message);
     }
 
+    // تأمين arrays
     putSignals = Array.isArray(putSignals) ? putSignals : [];
     callSignals = Array.isArray(callSignals) ? callSignals : [];
 
@@ -51,6 +63,7 @@ exports.generateMXNSignals = async (req, res) => {
       });
     }
 
+    // تحويل التوقيت
     const convertedPutSignals =
       timezoneConverter.findNextSignal(putSignals, userTimezone) || [];
 
@@ -83,7 +96,7 @@ exports.generateMXNSignals = async (req, res) => {
       });
     }
 
-    const safe = {
+    const safeSignal = {
       pair: nextSignal?.pair || 'USD/MXN OTC',
       type: nextSignal?.type || 'UNKNOWN',
       time: nextSignal?.localTime || '--:--',
@@ -96,9 +109,11 @@ exports.generateMXNSignals = async (req, res) => {
       )
     };
 
+    console.log(`🎯 NEXT SIGNAL: ${safeSignal.type} @ ${safeSignal.time}`);
+
     res.json({
       success: true,
-      nextSignal: safe,
+      nextSignal: safeSignal,
       recommendedType,
       upcomingPutSignals: convertedPutSignals.slice(0, 5),
       upcomingCallSignals: convertedCallSignals.slice(0, 5),
@@ -107,11 +122,72 @@ exports.generateMXNSignals = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('💥 FATAL:', error);
+    console.error('💥 FATAL ERROR:', error);
 
     res.status(500).json({
       success: false,
       message: 'Server crashed',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * GET /api/signals/upcoming
+ */
+exports.getUpcomingSignals = async (req, res) => {
+  try {
+    const { timezone } = req.query;
+    const userTimezone = timezone ? parseInt(timezone) : 2;
+
+    const putSignals = await signalAnalyzer.generateMXNSignals('PUT');
+    const callSignals = await signalAnalyzer.generateMXNSignals('CALL');
+
+    const convertedPutSignals =
+      timezoneConverter.findNextSignal(putSignals, userTimezone) || [];
+
+    const convertedCallSignals =
+      timezoneConverter.findNextSignal(callSignals, userTimezone) || [];
+
+    const allSignals = [...convertedPutSignals, ...convertedCallSignals]
+      .sort((a, b) => a.secondsUntil - b.secondsUntil);
+
+    res.json({
+      success: true,
+      signals: allSignals.slice(0, 20),
+      userTimezone,
+      count: allSignals.length,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error getting upcoming signals:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get signals',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * POST /api/signals/clear-cache
+ */
+exports.clearCache = async (req, res) => {
+  try {
+    signalAnalyzer.cache.PUT = { signals: [], lastUpdate: null };
+    signalAnalyzer.cache.CALL = { signals: [], lastUpdate: null };
+
+    res.json({
+      success: true,
+      message: 'Signal cache cleared successfully'
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clear cache',
       error: error.message
     });
   }
