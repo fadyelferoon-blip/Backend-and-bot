@@ -19,7 +19,7 @@ exports.generateMXNSignals = async (req, res) => {
 
     console.log(`🔥 Fetching MXN signals for ${uid} (UTC+${userTimezone})`);
 
-    // 🛡️ Timeout function
+    // 🛡️ Timeout function (120 seconds للبوت)
     const withTimeout = (promise, ms) => {
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout exceeded')), ms)
@@ -30,22 +30,24 @@ exports.generateMXNSignals = async (req, res) => {
     let putSignals = [];
     let callSignals = [];
 
-    // ✅ GET PUT
+    // ✅ GET PUT (120 seconds timeout)
     try {
+      console.log('🔴 Fetching PUT signals... (may take 60-90s)');
       putSignals = await withTimeout(
         signalAnalyzer.generateMXNSignals('PUT'),
-        15000
+        120000  // 120 seconds - البوت محتاج وقت!
       );
       console.log(`✅ PUT signals: ${putSignals?.length || 0}`);
     } catch (err) {
       console.error('❌ PUT ERROR:', err.message);
     }
 
-    // ✅ GET CALL
+    // ✅ GET CALL (120 seconds timeout)
     try {
+      console.log('🟢 Fetching CALL signals... (may take 60-90s)');
       callSignals = await withTimeout(
         signalAnalyzer.generateMXNSignals('CALL'),
-        15000
+        120000  // 120 seconds - البوت محتاج وقت!
       );
       console.log(`✅ CALL signals: ${callSignals?.length || 0}`);
     } catch (err) {
@@ -56,7 +58,10 @@ exports.generateMXNSignals = async (req, res) => {
     putSignals = Array.isArray(putSignals) ? putSignals : [];
     callSignals = Array.isArray(callSignals) ? callSignals : [];
 
+    console.log(`📊 Total signals: PUT=${putSignals.length}, CALL=${callSignals.length}`);
+
     if (!putSignals.length && !callSignals.length) {
+      console.log('⚠️  No signals available');
       return res.status(200).json({
         success: false,
         message: 'No signals available'
@@ -90,6 +95,7 @@ exports.generateMXNSignals = async (req, res) => {
     }
 
     if (!nextSignal) {
+      console.log('⚠️  No valid signals after timezone conversion');
       return res.status(200).json({
         success: false,
         message: 'No valid signals'
@@ -109,7 +115,7 @@ exports.generateMXNSignals = async (req, res) => {
       )
     };
 
-    console.log(`🎯 NEXT SIGNAL: ${safeSignal.type} @ ${safeSignal.time}`);
+    console.log(`🎯 NEXT SIGNAL: ${safeSignal.type} @ ${safeSignal.time} (${safeSignal.minutesUntil}min)`);
 
     res.json({
       success: true,
@@ -178,6 +184,8 @@ exports.clearCache = async (req, res) => {
   try {
     signalAnalyzer.cache.PUT = { signals: [], lastUpdate: null };
     signalAnalyzer.cache.CALL = { signals: [], lastUpdate: null };
+
+    console.log('🧹 Cache cleared');
 
     res.json({
       success: true,
