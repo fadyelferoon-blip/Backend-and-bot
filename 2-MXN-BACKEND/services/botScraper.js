@@ -55,27 +55,27 @@ class BotScraper {
       
       // 1. Pair: USD_MXN_OTC_QTX
       await page.select('#cbAtivo', 'USD_MXN_OTC_QTX');
-      await page.waitForTimeout(500);
+      await this.sleep(500);
 
       // 2. Min Percentage: 100%
       await page.select('#selPercentageMin', '100');
-      await page.waitForTimeout(500);
+      await this.sleep(500);
 
       // 3. Max Percentage: 100%
       await page.select('#selPercentageMax', '100');
-      await page.waitForTimeout(500);
+      await this.sleep(500);
 
       // 4. Timeframe: M1
       await page.select('#selCandleTime', 'M1');
-      await page.waitForTimeout(500);
+      await this.sleep(500);
 
       // 5. Days: 20
       await page.select('#selDays', '20');
-      await page.waitForTimeout(500);
+      await this.sleep(500);
 
       // 6. Order Type: PUT or CALL
       await page.select('#selOrderType', orderType);
-      await page.waitForTimeout(500);
+      await this.sleep(500);
 
       console.log(`✅ Form filled: USD_MXN_OTC_QTX, 100%, M1, 20 days, ${orderType}`);
 
