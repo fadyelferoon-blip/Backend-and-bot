@@ -1,110 +1,102 @@
 /**
  * Timezone Conversion Service
- * Converts bot signals (UTC+6) to user's local timezone
+ * Bot signals are in UTC+6 (Bangladesh time)
+ * We fetch signals at UTC+6, filter expired ones, then convert to user timezone
  */
 
 class TimezoneConverter {
-  /**
-   * Convert signal time from UTC+6 to user's timezone
-   * @param {string} signalTime - Time from bot in format "HH:MM:SS" (UTC+6)
-   * @param {number} userTimezoneOffset - User's timezone offset (e.g., +2 for UTC+2)
-   * @returns {Object} Converted time and difference
-   */
-  convertBotSignalToUserTime(signalTime, userTimezoneOffset) {
-    const BOT_TIMEZONE = 6; // Bot works in UTC+6
-    
-    // Parse signal time
+  
+  // Get current time in UTC+6 (bot timezone)
+  getCurrentBotTime() {
+    const now = new Date();
+    let hour = now.getUTCHours() + 6;
+    if (hour >= 24) hour -= 24;
+    return {
+      hour,
+      minute: now.getUTCMinutes(),
+      second: now.getUTCSeconds(),
+      totalSeconds: hour * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds()
+    };
+  }
+
+  // Convert time from UTC+6 to user's timezone
+  convertFromBotToUser(signalTime, userTimezoneOffset) {
     const [hour, minute, second] = signalTime.split(':').map(Number);
     
-    // Calculate timezone difference
-    // User UTC+2, Bot UTC+6 → difference = 2 - 6 = -4
-    const timezoneDiff = userTimezoneOffset - BOT_TIMEZONE;
+    // Bot is UTC+6, convert to UTC first, then to user timezone
+    let userHour = hour + (userTimezoneOffset - 6);
     
-    // Convert to user's timezone
-    let userHour = hour + timezoneDiff;
-    
-    // Handle day rollover
-    if (userHour < 0) {
-      userHour += 24;
-    } else if (userHour >= 24) {
-      userHour -= 24;
-    }
+    if (userHour < 0)   userHour += 24;
+    if (userHour >= 24) userHour -= 24;
+
+    const pad = n => String(n).padLeft ? String(n).padStart(2,'0') : (n < 10 ? '0'+n : ''+n);
     
     return {
       hour: userHour,
-      minute: minute,
-      second: second,
-      time: `${userHour}:${minute}:${second}`,
-      originalTime: signalTime,
-      timezoneDiff: timezoneDiff
+      minute,
+      second,
+      localTime: `${pad(userHour)}:${pad(minute)}:${pad(second)}`
     };
   }
 
   /**
-   * Find next upcoming signal based on current time
-   * @param {Array} signals - Array of signal objects with time
-   * @param {number} userTimezoneOffset - User's timezone offset
-   * @returns {Object} Next signal with countdown info
+   * Main function: filter expired signals and sort by next upcoming
+   * @param {Array} signals - signals with time in UTC+6
+   * @param {number} userTimezoneOffset - user's UTC offset (e.g. 2 for UTC+2)
    */
   findNextSignal(signals, userTimezoneOffset) {
-    // ✅ Get current time in user's timezone (not server timezone!)
-    const now = new Date();
-    const utcHour = now.getUTCHours();
-    const utcMinute = now.getUTCMinutes();
-    const utcSecond = now.getUTCSeconds();
+    const botNow = this.getCurrentBotTime();
     
-    // Calculate user's current time
-    let currentHour = utcHour + userTimezoneOffset;
-    if (currentHour >= 24) currentHour -= 24;
-    if (currentHour < 0) currentHour += 24;
-    
-    const currentMinute = utcMinute;
-    const currentSecond = utcSecond;
-    const currentTotalSeconds = currentHour * 3600 + currentMinute * 60 + currentSecond;
-    
-    console.log(`⏰ Current time (UTC+${userTimezoneOffset}): ${currentHour}:${currentMinute}:${currentSecond}`);
+    console.log(`⏰ Bot time (UTC+6): ${botNow.hour}:${botNow.minute}:${botNow.second}`);
 
-    // Convert all signals to user timezone
-    const convertedSignals = signals.map(signal => {
-      const converted = this.convertBotSignalToUserTime(signal.time, userTimezoneOffset);
-      
-      const signalTotalSeconds = converted.hour * 3600 + converted.minute * 60 + converted.second;
-      let secondsUntil = signalTotalSeconds - currentTotalSeconds;
-      
-      // If signal has passed today, it's for tomorrow
-      if (secondsUntil < 0) {
-        secondsUntil += 24 * 3600; // Add 24 hours
-      }
-      
-      return {
+    const result = [];
+
+    for (const signal of signals) {
+      const [h, m, s] = signal.time.split(':').map(Number);
+      const signalBotSeconds = h * 3600 + m * 60 + s;
+
+      // Seconds until this signal fires (in UTC+6)
+      let secondsUntil = signalBotSeconds - botNow.totalSeconds;
+
+      // Skip signals that already passed (more than 60s ago)
+      if (secondsUntil < -60) continue;
+
+      // If slightly negative (within 60s), treat as happening now
+      if (secondsUntil < 0) secondsUntil = 0;
+
+      // Convert signal time to user's local timezone for display
+      const converted = this.convertFromBotToUser(signal.time, userTimezoneOffset);
+
+      result.push({
         ...signal,
-        localHour: converted.hour,
-        localMinute: converted.minute,
-        localSecond: converted.second,
-        localTime: converted.time,
-        secondsUntil: secondsUntil,
+        localTime:    converted.localTime,
+        localHour:    converted.hour,
+        localMinute:  converted.minute,
+        localSecond:  converted.second,
+        secondsUntil,
         minutesUntil: Math.floor(secondsUntil / 60),
-        hoursUntil: Math.floor(secondsUntil / 3600)
-      };
-    });
+        hoursUntil:   Math.floor(secondsUntil / 3600)
+      });
+    }
 
-    // Sort by time remaining (ascending)
-    convertedSignals.sort((a, b) => a.secondsUntil - b.secondsUntil);
+    // Sort by soonest first
+    result.sort((a, b) => a.secondsUntil - b.secondsUntil);
 
-    return convertedSignals;
+    console.log(`📊 Valid signals: ${result.length} (removed expired)`);
+    if (result.length > 0) {
+      const next = result[0];
+      console.log(`🎯 NEXT SIGNAL: ${next.type} @ ${next.localTime} (user time) in ${next.minutesUntil}min`);
+    }
+
+    return result;
   }
 
-  /**
-   * Format countdown for display
-   * @param {number} seconds - Total seconds until signal
-   * @returns {string} Formatted time "HH:MM:SS"
-   */
   formatCountdown(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
   }
 }
 
