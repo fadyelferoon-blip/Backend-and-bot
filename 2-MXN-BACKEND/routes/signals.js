@@ -4,8 +4,14 @@ const signalsController = require('../controllers/signalsController');
 
 router.post('/mxn',         signalsController.generateMXNSignals);
 router.get('/upcoming',     signalsController.getUpcomingSignals);
-router.get('/status',       signalsController.getCacheStatus);
 router.post('/clear-cache', signalsController.clearCache);
-router.post('/refresh',     signalsController.forceRefresh);
+
+// Only add status/refresh if controller supports them
+if (signalsController.getCacheStatus) {
+  router.get('/status', signalsController.getCacheStatus);
+}
+if (signalsController.forceRefresh) {
+  router.post('/refresh', signalsController.forceRefresh);
+}
 
 module.exports = router;
