@@ -30,7 +30,7 @@ class SignalAnalyzer {
     try {
       const signals = await botScraper.scrapeSignals(orderType);
       this.cache[orderType] = {
-        signals: signals.map(s => ({ ...s, pairDisplay: 'GOLD' })),
+        signals: signals.map(s => ({ ...s, pairDisplay: 'USD/MXN' })),
         fetchedAt: Date.now()
       };
       console.log(`💾 Cached ${orderType}: ${signals.length} signals`);
@@ -89,6 +89,11 @@ class SignalAnalyzer {
         ? Math.round((this.CACHE_DURATION - (Date.now() - this.cache.PUT.fetchedAt)) / 60000) + 'min'
         : 'N/A'
     };
+  }
+
+  // Alias for backward compatibility with old controller
+  async generateMXNSignals(orderType) {
+    return this.generateSignals(orderType);
   }
 
   clearCache() {
