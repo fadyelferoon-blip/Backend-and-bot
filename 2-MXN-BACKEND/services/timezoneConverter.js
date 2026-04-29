@@ -1,9 +1,8 @@
 class TimezoneConverter {
 
-  // 🔹 عرض وقت البوت (UTC+6 فقط للعرض)
+  // عرض وقت البوت (UTC+6)
   getCurrentBotTime() {
     const now = new Date();
-
     const hour = (now.getUTCHours() + 6) % 24;
     const minute = now.getUTCMinutes();
     const second = now.getUTCSeconds();
@@ -16,26 +15,20 @@ class TimezoneConverter {
     };
   }
 
-  /**
-   * 🔹 تحويل الوقت من وقت البوت إلى وقت المستخدم
-   */
+  // تحويل الوقت من وقت البوت إلى وقت المستخدم المحلي
   convertToUserTime(signalTime, userOffset, botOffset = 6) {
     const [h, m, s] = signalTime.split(':').map(Number);
-
     const userHour = (h - botOffset + userOffset + 24) % 24;
 
     return {
       hour: userHour,
       minute: m,
       second: s,
-      // ✅ تم التصحيح هنا باستخدام علامات ` `
       localTime: `${String(userHour).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
     };
   }
 
-  /**
-   * 🔹 فلترة الإشارات القادمة فقط
-   */
+  // هذه هي الدالة التي يشتكي السيرفر من فقدانها
   findNextSignal(signals, userOffset) {
     const bot = this.getCurrentBotTime();
     const upcoming = [];
@@ -45,6 +38,7 @@ class TimezoneConverter {
       const signalSeconds = h * 3600 + m * 60 + s;
       const secondsUntil = signalSeconds - bot.totalSeconds;
 
+      // فلترة الإشارات التي مضت
       if (secondsUntil <= 0) continue;
 
       const converted = this.convertToUserTime(signal.time, userOffset);
@@ -62,4 +56,5 @@ class TimezoneConverter {
   }
 }
 
+// تأكد من هذه السطر في نهاية الملف
 module.exports = new TimezoneConverter();
