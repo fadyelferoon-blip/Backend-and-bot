@@ -1,94 +1,85 @@
 /**
  * Timezone Conversion Service
  * Bot signals are in UTC+6 (Bangladesh time)
- * We fetch signals at UTC+6, filter expired ones, then convert to user timezone
  */
 
 class TimezoneConverter {
-  
+
   // Get current time in UTC+6 (bot timezone)
   getCurrentBotTime() {
     const now = new Date();
     let hour = now.getUTCHours() + 6;
     if (hour >= 24) hour -= 24;
+    const minute = now.getUTCMinutes();
+    const second = now.getUTCSeconds();
     return {
       hour,
-      minute: now.getUTCMinutes(),
-      second: now.getUTCSeconds(),
-      totalSeconds: hour * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds()
+      minute,
+      second,
+      totalSeconds: hour * 3600 + minute * 60 + second
     };
   }
 
-  // Convert time from UTC+6 to user's timezone
-  convertFromBotToUser(signalTime, userTimezoneOffset) {
-    const [hour, minute, second] = signalTime.split(':').map(Number);
-    
-    // Bot is UTC+6, convert to UTC first, then to user timezone
-    let userHour = hour + (userTimezoneOffset - 6);
-    
+  // Convert signal time from UTC+6 to user timezone (display only)
+  convertToUserTime(signalTime, userOffset) {
+    const [h, m, s] = signalTime.split(':').map(Number);
+    let userHour = h + (userOffset - 6);
     if (userHour < 0)   userHour += 24;
     if (userHour >= 24) userHour -= 24;
-
-    const pad = n => String(n).padLeft ? String(n).padStart(2,'0') : (n < 10 ? '0'+n : ''+n);
-    
+    const pad = n => String(n).padStart(2, '0');
     return {
       hour: userHour,
-      minute,
-      second,
-      localTime: `${pad(userHour)}:${pad(minute)}:${pad(second)}`
+      minute: m,
+      second: s,
+      localTime: `${pad(userHour)}:${pad(m)}:${pad(s)}`
     };
   }
 
   /**
-   * Main function: filter expired signals and sort by next upcoming
-   * @param {Array} signals - signals with time in UTC+6
-   * @param {number} userTimezoneOffset - user's UTC offset (e.g. 2 for UTC+2)
+   * Filter and sort signals - STRICT rules:
+   * - Only signals that have NOT started yet (secondsUntil > 0)
+   * - Remove anything expired or currently active
+   * - Sort by soonest first
    */
-  findNextSignal(signals, userTimezoneOffset) {
-    const botNow = this.getCurrentBotTime();
-    
-    console.log(`⏰ Bot time (UTC+6): ${botNow.hour}:${botNow.minute}:${botNow.second}`);
+  findNextSignal(signals, userOffset) {
+    const bot = this.getCurrentBotTime();
+    console.log(`⏰ Bot time (UTC+6): ${bot.hour}:${bot.minute}:${bot.second}`);
 
-    const result = [];
+    const upcoming = [];
 
     for (const signal of signals) {
       const [h, m, s] = signal.time.split(':').map(Number);
-      const signalBotSeconds = h * 3600 + m * 60 + s;
+      const signalSeconds = h * 3600 + m * 60 + s;
 
-      // Seconds until this signal fires (in UTC+6)
-      let secondsUntil = signalBotSeconds - botNow.totalSeconds;
+      // Seconds until signal starts
+      const secondsUntil = signalSeconds - bot.totalSeconds;
 
-      // Skip signals that already passed (more than 60s ago)
-      if (secondsUntil < -60) continue;
+      // STRICT: only future signals (must be at least 1 second away)
+      if (secondsUntil <= 0) continue;
 
-      // If slightly negative (within 60s), treat as happening now
-      if (secondsUntil < 0) secondsUntil = 0;
+      const converted = this.convertToUserTime(signal.time, userOffset);
 
-      // Convert signal time to user's local timezone for display
-      const converted = this.convertFromBotToUser(signal.time, userTimezoneOffset);
-
-      result.push({
+      upcoming.push({
         ...signal,
-        localTime:    converted.localTime,
-        localHour:    converted.hour,
-        localMinute:  converted.minute,
-        localSecond:  converted.second,
+        localTime:   converted.localTime,
+        localHour:   converted.hour,
+        localMinute: converted.minute,
+        localSecond: converted.second,
         secondsUntil,
         minutesUntil: Math.floor(secondsUntil / 60),
         hoursUntil:   Math.floor(secondsUntil / 3600)
       });
     }
 
-    // Sort by soonest first
-    result.sort((a, b) => a.secondsUntil - b.secondsUntil);
+    upcoming.sort((a, b) => a.secondsUntil - b.secondsUntil);
 
-    console.log(`📊 Valid signals: ${result.length} (removed expired)`);
-    if (result.length > 0) {
-      const next = result[0];
-      console.log(`🎯 NEXT SIGNAL: ${next.type} @ ${next.localTime} (user time) in ${next.minutesUntil}min`);
+    console.log(`📊 Upcoming signals: ${upcoming.length}`);
+    if (upcoming.length > 0) {
+      const next = upcoming[0];
+      console.log(`🎯 Next: ${next.type} @ ${next.localTime} in ${next.minutesUntil}min ${next.secondsUntil % 60}s`);
     }
 
-    return result;
+    return upcoming;
   }
 
   formatCountdown(seconds) {
