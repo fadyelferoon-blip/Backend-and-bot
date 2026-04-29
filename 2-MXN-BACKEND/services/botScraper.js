@@ -4,14 +4,12 @@ class BotScraper {
   constructor() {
     this.browser = null;
     this.botUrl = process.env.BOT_URL || 'https://fer3oon-bot.railway.app';
-    this.timeOffset = parseInt(process.env.TIME_OFFSET || '6'); // محفوظ لكن غير مستخدم في التحويل
+    this.timeOffset = parseInt(process.env.TIME_OFFSET || '6');
   }
 
   async initBrowser() {
     if (this.browser) return;
-
     console.log('Launching browser...');
-
     this.browser = await puppeteer.launch({
       headless: 'new',
       args: [
@@ -25,7 +23,6 @@ class BotScraper {
         '--disable-extensions'
       ]
     });
-
     console.log('Browser launched successfully');
   }
 
@@ -33,7 +30,7 @@ class BotScraper {
     try {
       await this.initBrowser();
 
-      // تم التصحيح هنا باستخدام علامات الـ Backticks ` `
+      // ✅ تم التصحيح هنا باستخدام علامات ` `
       console.log(`Scraping ${orderType} signals...`);
 
       const page = await this.browser.newPage();
@@ -46,26 +43,19 @@ class BotScraper {
 
       await page.select('#cbAtivo', 'USD_MXN_OTC_QTX');
       await this.sleep(500);
-
       await page.select('#selPercentageMin', '100');
       await this.sleep(500);
-
       await page.select('#selPercentageMax', '100');
       await this.sleep(500);
-
       await page.select('#selCandleTime', 'M1');
       await this.sleep(500);
-
       await page.select('#selDays', '20');
       await this.sleep(500);
-
       await page.select('#selOrderType', orderType);
       await this.sleep(500);
 
       await page.evaluate(() => {
-        if (typeof getHistoric === 'function') {
-          getHistoric();
-        }
+        if (typeof getHistoric === 'function') getHistoric();
       });
 
       await page.waitForFunction(
@@ -73,21 +63,19 @@ class BotScraper {
         { timeout: 90000 }
       );
 
-      // 🚨 IMPORTANT: NO TIME CONVERSION HERE
       const signals = await page.evaluate((type) => {
         return listBestPairTimes.map(signal => {
           const timeParts = signal.time.split(':');
-
           const hour = parseInt(timeParts[0]);
           const minute = parseInt(timeParts[1]);
           const second = parseInt(timeParts[2] || 0);
 
-          // تم تصحيح بناء النص هنا أيضاً
           return {
             pair: 'GOLD',
             hour,
             minute,
             second,
+            // ✅ تم تصحيح بناء النص هنا أيضاً باستخدام ` `
             time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`,
             type,
             winrate: signal.winrate || 100
@@ -115,7 +103,6 @@ class BotScraper {
         CALL: callSignals,
         timestamp: new Date().toISOString()
       };
-
     } catch (error) {
       console.error('Error getting signals:', error);
       throw error;
