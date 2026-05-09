@@ -1,50 +1,39 @@
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('puppeteer');
 
 class BotScraper {
   constructor() {
     this.browser = null;
     this.botUrl = process.env.BOT_URL || 'https://fer3oon-bot.railway.app';
-    this.timeOffset = parseInt(process.env.TIME_OFFSET || '6');
-
-    // ✅ Chromium path (Railway / Linux safe default)
-    this.executablePath =
-  process.env.PUPPETEER_EXECUTABLE_PATH ||
-  '/usr/bin/chromium-browser';
+    this.timeOffset = parseInt(process.env.TIME_OFFSET || '6'); // محفوظ لكن غير مستخدم في التحويل
   }
 
   async initBrowser() {
     if (this.browser) return;
 
-    console.log('🚀 Launching browser...');
+    console.log('Launching browser...');
 
-    try {
-      this.browser = await puppeteer.launch({
-        headless: 'new',
-        executablePath: this.executablePath,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions'
-        ]
-      });
+    this.browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions'
+      ]
+    });
 
-      console.log('✅ Browser launched successfully');
-    } catch (err) {
-      console.error('❌ Failed to launch browser:', err.message);
-      throw err;
-    }
+    console.log('Browser launched successfully');
   }
 
   async scrapeSignals(orderType = 'PUT') {
     try {
       await this.initBrowser();
 
-      console.log(`🔄 Scraping ${orderType} signals...`);
+      console.log(`Scraping ${orderType} signals...`);
 
       const page = await this.browser.newPage();
       await page.setViewport({ width: 1280, height: 800 });
@@ -86,7 +75,7 @@ class BotScraper {
           const second = parseInt(timeParts[2] || 0);
 
           return {
-            pair: 'GOLD',
+            pair: 'USD/MXN',
             hour,
             minute,
             second,
