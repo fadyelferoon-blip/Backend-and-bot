@@ -43,33 +43,38 @@ class BotScraper {
         timeout: 60000
       });
 
-      await page.select('#cbAtivo', 'USD_MXN_OTC_QTX');
+      await page.select('#cbAtivo', 'USD/MXN_OTC_QTX');
       await this.sleep(500);
+
       await page.select('#selPercentageMin', '100');
       await this.sleep(500);
+
       await page.select('#selPercentageMax', '100');
       await this.sleep(500);
+
       await page.select('#selCandleTime', 'M1');
       await this.sleep(500);
+
       await page.select('#selDays', '20');
       await this.sleep(500);
+
       await page.select('#selOrderType', orderType);
       await this.sleep(500);
 
       await page.evaluate(() => {
-        if (typeof getHistoric === 'function') getHistoric();
+        getHistoric();
       });
 
       await page.waitForFunction(
-        () =>
-          typeof listBestPairTimes !== 'undefined' &&
-          listBestPairTimes.length > 0,
+        () => typeof listBestPairTimes !== 'undefined' && listBestPairTimes.length > 0,
         { timeout: 90000 }
       );
 
+      // 🚨 IMPORTANT: NO TIME CONVERSION HERE
       const signals = await page.evaluate((type) => {
-        return listBestPairTimes.map((signal) => {
+        return listBestPairTimes.map(signal => {
           const timeParts = signal.time.split(':');
+
           const hour = parseInt(timeParts[0]);
           const minute = parseInt(timeParts[1]);
           const second = parseInt(timeParts[2] || 0);
@@ -81,7 +86,9 @@ class BotScraper {
             second,
             time: `${hour.toString().padStart(2, '0')}:${minute
               .toString()
-              .padStart(2, '0')}:${second.toString().padStart(2, '0')}`,
+              .padStart(2, '0')}:${second
+              .toString()
+              .padStart(2, '0')}`,
             type,
             winrate: signal.winrate || 100
           };
@@ -91,9 +98,10 @@ class BotScraper {
       await page.close();
 
       return signals;
+
     } catch (error) {
-      console.error('❌ Error scraping signals:', error);
-      return []; // ✅ مهم: منع الكراش
+      console.error('Error scraping signals:', error);
+      throw error;
     }
   }
 
@@ -108,29 +116,22 @@ class BotScraper {
         CALL: callSignals,
         timestamp: new Date().toISOString()
       };
+
     } catch (error) {
-      console.error('❌ Error getting signals:', error);
-      return {
-        PUT: [],
-        CALL: [],
-        timestamp: new Date().toISOString()
-      };
+      console.error('Error getting signals:', error);
+      throw error;
     }
   }
 
   async closeBrowser() {
-    try {
-      if (this.browser) {
-        await this.browser.close();
-        this.browser = null;
-      }
-    } catch (err) {
-      console.error('❌ Error closing browser:', err.message);
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
     }
   }
 
   sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 
