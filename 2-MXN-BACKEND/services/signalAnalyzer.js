@@ -8,35 +8,53 @@ class SignalAnalyzer {
       CALL: { signals: [], fetchedAt: null }
     };
     this.isRefreshing = false;
-    this.CACHE_DURATION = 3 * 60 * 60 * 1000; // 3 hours
+    this.CACHE_DURATION = 3 * 60 * 60 * 1000;
   }
 
-  isCacheValid(orderType) {
-    const c = this.cache[orderType];
-    if (!c.fetchedAt || c.signals.length === 0) return false;
-    return (Date.now() - c.fetchedAt) < this.CACHE_DURATION;
+  isCacheValid(type) {
+    const c = this.cache[type];
+    return c.fetchedAt && c.signals.length > 0 &&
+      (Date.now() - c.fetchedAt) < this.CACHE_DURATION;
   }
 
   isCacheReady() {
     return this.isCacheValid('PUT') && this.isCacheValid('CALL');
   }
 
-  async generateSignals(orderType) {
-    if (this.isCacheValid(orderType)) {
-      console.log(`✅ Using cached ${orderType}`);
-      return this.cache[orderType].signals;
+  async generateSignals(type) {
+    if (this.isCacheValid(type)) {
+      console.log(`✅ Using cached ${type}`);
+      return this.cache[type].signals;
     }
-    console.log(`🔄 Fetching fresh ${orderType}...`);
+
+    console.log(`🔄 Fetching ${type} signals...`);
+
     try {
-      const signals = await botScraper.scrapeSignals(orderType);
-      this.cache[orderType] = {
-        signals: signals.map(s => ({ ...s, pairDisplay: 'USD/MXN' })),
+      const signals = await botScraper.scrapeSignals(type);
+
+      this.cache[type] = {
+        signals: signals.map(s => ({ ...s, pairDisplay: 'GOLD' })),
         fetchedAt: Date.now()
       };
-      console.log(`💾 Cached ${orderType}: ${signals.length} signals`);
-      return this.cache[orderType].signals;
-    } catch (e) {
-      console.error(`❌ ${orderType}:`, e.message);
+
+      const bot = timezoneConverter.getCurrentBotTime();
+      console.log(`📊 USD/MXN-OTC ${type}: ${signals.length} signals | Bot time (UTC+6): ${String(bot.hour).padStart(2,'0')}:${String(bot.minute).padStart(2,'0')}:${String(bot.second).padStart(2,'0')}`);
+
+      // Debug: show how many are upcoming
+      const upcoming = signals.filter(s => {
+        const [h, m, sec] = s.time.split(':').map(Number);
+        const sigSecs = h * 3600 + m * 60 + sec;
+        return sigSecs > bot.totalSeconds;
+      });
+      console.log(`📅 ${type} upcoming (after now): ${upcoming.length}`);
+      if (upcoming.length > 0) {
+        console.log(`   First: ${upcoming[0].time} | Last: ${upcoming[upcoming.length-1].time}`);
+      }
+
+      return this.cache[type].signals;
+
+    } catch (err) {
+      console.error(`❌ Error ${type}:`, err.message);
       return [];
     }
   }
@@ -44,56 +62,39 @@ class SignalAnalyzer {
   async refreshAll() {
     if (this.isRefreshing) return;
     this.isRefreshing = true;
-    console.log('🔄 Refreshing all signals...');
+
     await this.generateSignals('PUT');
     await new Promise(r => setTimeout(r, 1000));
     await this.generateSignals('CALL');
+
+    // Show next upcoming signal
+    const all = this.getAllMergedSignals();
+    const bot = timezoneConverter.getCurrentBotTime();
+    console.log(`🔍 Total merged: ${all.length} | Bot now: ${String(bot.hour).padStart(2,'0')}:${String(bot.minute).padStart(2,'0')}`);
+
+    const upcoming = timezoneConverter.findNextSignal(all, 2);
+    console.log(`🔍 After filter: ${upcoming.length} upcoming`);
+
+    if (upcoming.length > 0) {
+      const next = upcoming[0];
+      console.log(`🎯 NEXT SIGNAL: ${next.type} @ ${next.localTime} (${next.minutesUntil}min)`);
+    } else {
+      console.log(`⚠️ No upcoming signals - all passed for today`);
+    }
+
     this.isRefreshing = false;
-    console.log('✅ Refresh complete');
   }
 
   startBackgroundRefresh() {
     setTimeout(() => this.refreshAll(), 5000);
     setInterval(() => this.refreshAll(), this.CACHE_DURATION);
-    console.log('⏰ Refresh every 3h');
   }
 
-  // Get next signal - filters expired ones on every call
-  getNextSignal(userTimezone = 2) {
-    if (!this.isCacheReady()) return null;
-
-    // Merge PUT and CALL signals
-    const allSignals = [
+  getAllMergedSignals() {
+    return [
       ...this.cache.PUT.signals,
       ...this.cache.CALL.signals
     ];
-
-    // findNextSignal filters expired and returns only future signals
-    const upcoming = timezoneConverter.findNextSignal(allSignals, userTimezone);
-
-    if (!upcoming || upcoming.length === 0) return null;
-
-    // Return the soonest one
-    return upcoming[0];
-  }
-
-  getCacheStatus() {
-    return {
-      put:  this.cache.PUT.signals.length,
-      call: this.cache.CALL.signals.length,
-      fetchedAt: this.cache.PUT.fetchedAt
-        ? new Date(this.cache.PUT.fetchedAt).toISOString() : null,
-      isRefreshing: this.isRefreshing,
-      ready: this.isCacheReady(),
-      cacheExpiresIn: this.cache.PUT.fetchedAt
-        ? Math.round((this.CACHE_DURATION - (Date.now() - this.cache.PUT.fetchedAt)) / 60000) + 'min'
-        : 'N/A'
-    };
-  }
-
-  // Alias for backward compatibility with old controller
-  async generateMXNSignals(orderType) {
-    return this.generateSignals(orderType);
   }
 
   clearCache() {
