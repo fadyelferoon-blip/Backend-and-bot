@@ -2,15 +2,17 @@ const express = require('express');
 const router = express.Router();
 const signalsController = require('../controllers/signalsController');
 
-router.post('/mxn',         signalsController.generateMXNSignals);
-router.get('/upcoming',     signalsController.getUpcomingSignals);
+// 🔥 Core routes (أساسية)
+router.post('/mxn', signalsController.generateMXNSignals);
+router.get('/upcoming', signalsController.getUpcomingSignals);
 router.post('/clear-cache', signalsController.clearCache);
 
-// Only add status/refresh if controller supports them
-if (signalsController.getCacheStatus) {
+// 🚀 Optional routes (فقط لو موجودة في controller)
+if (typeof signalsController.getCacheStatus === 'function') {
   router.get('/status', signalsController.getCacheStatus);
 }
-if (signalsController.forceRefresh) {
+
+if (typeof signalsController.forceRefresh === 'function') {
   router.post('/refresh', signalsController.forceRefresh);
 }
 
