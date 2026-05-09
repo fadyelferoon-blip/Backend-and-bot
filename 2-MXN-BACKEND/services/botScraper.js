@@ -1,37 +1,51 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 
 class BotScraper {
   constructor() {
     this.browser = null;
     this.botUrl = process.env.BOT_URL || 'https://fer3oon-bot.railway.app';
     this.timeOffset = parseInt(process.env.TIME_OFFSET || '6');
+
+    // ✅ Chromium path (Railway / Linux safe default)
+    this.executablePath =
+      process.env.CHROME_PATH ||
+      process.env.PUPPETEER_EXECUTABLE_PATH ||
+      '/usr/bin/chromium';
   }
 
   async initBrowser() {
     if (this.browser) return;
-    console.log('Launching browser...');
-    this.browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions'
-      ]
-    });
-    console.log('Browser launched successfully');
+
+    console.log('🚀 Launching browser...');
+
+    try {
+      this.browser = await puppeteer.launch({
+        headless: 'new',
+        executablePath: this.executablePath,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-extensions'
+        ]
+      });
+
+      console.log('✅ Browser launched successfully');
+    } catch (err) {
+      console.error('❌ Failed to launch browser:', err.message);
+      throw err;
+    }
   }
 
   async scrapeSignals(orderType = 'PUT') {
     try {
       await this.initBrowser();
 
-      // ✅ تم التصحيح هنا باستخدام علامات ` `
-      console.log(`Scraping ${orderType} signals...`);
+      console.log(`🔄 Scraping ${orderType} signals...`);
 
       const page = await this.browser.newPage();
       await page.setViewport({ width: 1280, height: 800 });
@@ -59,12 +73,14 @@ class BotScraper {
       });
 
       await page.waitForFunction(
-        () => typeof listBestPairTimes !== 'undefined' && listBestPairTimes.length > 0,
+        () =>
+          typeof listBestPairTimes !== 'undefined' &&
+          listBestPairTimes.length > 0,
         { timeout: 90000 }
       );
 
       const signals = await page.evaluate((type) => {
-        return listBestPairTimes.map(signal => {
+        return listBestPairTimes.map((signal) => {
           const timeParts = signal.time.split(':');
           const hour = parseInt(timeParts[0]);
           const minute = parseInt(timeParts[1]);
@@ -75,8 +91,9 @@ class BotScraper {
             hour,
             minute,
             second,
-            // ✅ تم تصحيح بناء النص هنا أيضاً باستخدام ` `
-            time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`,
+            time: `${hour.toString().padStart(2, '0')}:${minute
+              .toString()
+              .padStart(2, '0')}:${second.toString().padStart(2, '0')}`,
             type,
             winrate: signal.winrate || 100
           };
@@ -84,11 +101,11 @@ class BotScraper {
       }, orderType);
 
       await page.close();
-      return signals;
 
+      return signals;
     } catch (error) {
-      console.error('Error scraping signals:', error);
-      throw error;
+      console.error('❌ Error scraping signals:', error);
+      return []; // ✅ مهم: منع الكراش
     }
   }
 
@@ -104,20 +121,28 @@ class BotScraper {
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Error getting signals:', error);
-      throw error;
+      console.error('❌ Error getting signals:', error);
+      return {
+        PUT: [],
+        CALL: [],
+        timestamp: new Date().toISOString()
+      };
     }
   }
 
   async closeBrowser() {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
+    try {
+      if (this.browser) {
+        await this.browser.close();
+        this.browser = null;
+      }
+    } catch (err) {
+      console.error('❌ Error closing browser:', err.message);
     }
   }
 
   sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
