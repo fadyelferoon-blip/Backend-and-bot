@@ -8,9 +8,8 @@ class BotScraper {
 
     // ✅ Chromium path (Railway / Linux safe default)
     this.executablePath =
-      process.env.CHROME_PATH ||
-      process.env.PUPPETEER_EXECUTABLE_PATH ||
-      '/usr/bin/chromium';
+  process.env.PUPPETEER_EXECUTABLE_PATH ||
+  '/usr/bin/chromium-browser';
   }
 
   async initBrowser() {
