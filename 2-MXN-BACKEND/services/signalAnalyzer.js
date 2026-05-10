@@ -4,102 +4,166 @@ const timezoneConverter = require('./timezoneConverter');
 class SignalAnalyzer {
   constructor() {
     this.cache = {
-      PUT:  { signals: [], fetchedAt: null },
-      CALL: { signals: [], fetchedAt: null }
+      PUT: { signals: [], lastUpdate: null },
+      CALL: { signals: [], lastUpdate: null }
     };
-    this.isRefreshing = false;
-    this.CACHE_DURATION = 3 * 60 * 60 * 1000;
+    this.CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours
   }
 
-  isCacheValid(type) {
-    const c = this.cache[type];
-    return c.fetchedAt && c.signals.length > 0 &&
-      (Date.now() - c.fetchedAt) < this.CACHE_DURATION;
-  }
-
-  isCacheReady() {
-    return this.isCacheValid('PUT') && this.isCacheValid('CALL');
-  }
-
-  async generateSignals(type) {
-    if (this.isCacheValid(type)) {
-      console.log(`✅ Using cached ${type}`);
-      return this.cache[type].signals;
+  /**
+   * Generate MXN signals by scraping the bot
+   * @param {string} orderType - 'PUT' or 'CALL'
+   * @returns {Promise<Array>} List of signals
+   */
+  async generateMXNSignals(orderType = 'PUT') {
+    // Check cache first
+    if (this.isCacheValid(orderType)) {
+      console.log(`✅ Using cached ${orderType} signals`);
+      return this.cache[orderType].signals;
     }
 
-    console.log(`🔄 Fetching ${type} signals...`);
+    console.log(`🔄 Generating fresh ${orderType} signals from bot...`);
 
     try {
-      const signals = await botScraper.scrapeSignals(type);
+      // Scrape signals from the bot
+      const signals = await botScraper.scrapeSignals(orderType);
 
-      this.cache[type] = {
-        signals: signals.map(s => ({ ...s, pairDisplay: 'GOLD' })),
-        fetchedAt: Date.now()
-      };
-
-      const bot = timezoneConverter.getCurrentBotTime();
-      console.log(`📊 USD/MXN-OTC ${type}: ${signals.length} signals | Bot time (UTC+6): ${String(bot.hour).padStart(2,'0')}:${String(bot.minute).padStart(2,'0')}:${String(bot.second).padStart(2,'0')}`);
-
-      // Debug: show how many are upcoming
-      const upcoming = signals.filter(s => {
-        const [h, m, sec] = s.time.split(':').map(Number);
-        const sigSecs = h * 3600 + m * 60 + sec;
-        return sigSecs > bot.totalSeconds;
-      });
-      console.log(`📅 ${type} upcoming (after now): ${upcoming.length}`);
-      if (upcoming.length > 0) {
-        console.log(`   First: ${upcoming[0].time} | Last: ${upcoming[upcoming.length-1].time}`);
+      if (!signals || signals.length === 0) {
+        console.warn(`⚠️ No ${orderType} signals found`);
+        return [];
       }
 
-      return this.cache[type].signals;
+      // Add metadata
+      const enrichedSignals = signals.map(signal => ({
+        ...signal,
+        pair: 'USD/MXN',
+        winrate: 100,
+        occurrences: 1 // We don't have this from scraping
+      }));
 
-    } catch (err) {
-      console.error(`❌ Error ${type}:`, err.message);
-      return [];
+      // Update cache
+      this.updateCache(orderType, enrichedSignals);
+
+      console.log(`✅ Generated ${enrichedSignals.length} ${orderType} signals`);
+
+      return enrichedSignals;
+
+    } catch (error) {
+      console.error(`❌ Error generating ${orderType} signals:`, error);
+      
+      // Return cached signals if available, even if expired
+      if (this.cache[orderType].signals.length > 0) {
+        console.log(`⚠️ Returning expired cache due to error`);
+        return this.cache[orderType].signals;
+      }
+
+      throw error;
     }
   }
 
-  async refreshAll() {
-    if (this.isRefreshing) return;
-    this.isRefreshing = true;
-
-    await this.generateSignals('PUT');
-    await new Promise(r => setTimeout(r, 1000));
-    await this.generateSignals('CALL');
-
-    // Show next upcoming signal
-    const all = this.getAllMergedSignals();
-    const bot = timezoneConverter.getCurrentBotTime();
-    console.log(`🔍 Total merged: ${all.length} | Bot now: ${String(bot.hour).padStart(2,'0')}:${String(bot.minute).padStart(2,'0')}`);
-
-    const upcoming = timezoneConverter.findNextSignal(all, 2);
-    console.log(`🔍 After filter: ${upcoming.length} upcoming`);
-
-    if (upcoming.length > 0) {
-      const next = upcoming[0];
-      console.log(`🎯 NEXT SIGNAL: ${next.type} @ ${next.localTime} (${next.minutesUntil}min)`);
-    } else {
-      console.log(`⚠️ No upcoming signals - all passed for today`);
+  /**
+   * Get next upcoming signal with timezone conversion
+   * @param {string} orderType - 'PUT' or 'CALL'
+   * @param {number} userTimezone - User's timezone offset (e.g., +2)
+   * @returns {Promise<Object>} Next signal with countdown
+   */
+  async getNextSignal(orderType, userTimezone = 2) {
+    const signals = await this.generateMXNSignals(orderType);
+    
+    if (!signals || signals.length === 0) {
+      return null;
     }
 
-    this.isRefreshing = false;
+    // Convert to user's timezone and find next signal
+    const convertedSignals = timezoneConverter.findNextSignal(signals, userTimezone);
+
+    return convertedSignals[0]; // Return the very next signal
   }
 
-  startBackgroundRefresh() {
-    setTimeout(() => this.refreshAll(), 5000);
-    setInterval(() => this.refreshAll(), this.CACHE_DURATION);
+  /**
+   * Get all upcoming signals (both PUT and CALL)
+   * @param {number} userTimezone - User's timezone offset
+   * @returns {Promise<Object>} Object with next PUT and CALL signals
+   */
+  async getAllUpcomingSignals(userTimezone = 2) {
+    try {
+      // Get both types of signals
+      const putSignals = await this.generateMXNSignals('PUT');
+      const callSignals = await this.generateMXNSignals('CALL');
+
+      // Convert to user timezone
+      const convertedPutSignals = timezoneConverter.findNextSignal(putSignals, userTimezone);
+      const convertedCallSignals = timezoneConverter.findNextSignal(callSignals, userTimezone);
+
+      // Get next signals
+      const nextPut = convertedPutSignals[0];
+      const nextCall = convertedCallSignals[0];
+
+      // Determine which is closer
+      let nextSignal = null;
+      let recommendedType = null;
+
+      if (nextPut && nextCall) {
+        if (nextPut.secondsUntil < nextCall.secondsUntil) {
+          nextSignal = nextPut;
+          recommendedType = 'PUT';
+        } else {
+          nextSignal = nextCall;
+          recommendedType = 'CALL';
+        }
+      } else if (nextPut) {
+        nextSignal = nextPut;
+        recommendedType = 'PUT';
+      } else if (nextCall) {
+        nextSignal = nextCall;
+        recommendedType = 'CALL';
+      }
+
+      return {
+        nextSignal,
+        recommendedType,
+        upcomingPutSignals: convertedPutSignals.slice(0, 10),
+        upcomingCallSignals: convertedCallSignals.slice(0, 10),
+        userTimezone
+      };
+
+    } catch (error) {
+      console.error('❌ Error getting all upcoming signals:', error);
+      throw error;
+    }
   }
 
-  getAllMergedSignals() {
-    return [
-      ...this.cache.PUT.signals,
-      ...this.cache.CALL.signals
-    ];
+  /**
+   * Check if cache is still valid
+   */
+  isCacheValid(orderType) {
+    const cache = this.cache[orderType];
+    
+    if (!cache.lastUpdate || cache.signals.length === 0) {
+      return false;
+    }
+
+    const age = Date.now() - cache.lastUpdate;
+    return age < this.CACHE_DURATION;
   }
 
+  /**
+   * Update cache
+   */
+  updateCache(orderType, signals) {
+    this.cache[orderType] = {
+      signals: signals,
+      lastUpdate: Date.now()
+    };
+    console.log(`💾 Cache updated for ${orderType} (${signals.length} signals)`);
+  }
+
+  /**
+   * Clear cache manually
+   */
   clearCache() {
-    this.cache.PUT  = { signals: [], fetchedAt: null };
-    this.cache.CALL = { signals: [], fetchedAt: null };
+    this.cache.PUT = { signals: [], lastUpdate: null };
+    this.cache.CALL = { signals: [], lastUpdate: null };
     console.log('🗑️ Cache cleared');
   }
 }
