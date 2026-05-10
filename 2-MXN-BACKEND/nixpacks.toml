@@ -1,11 +1,12 @@
-[variables]
-PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
-
 [phases.setup]
-aptPkgs = ["chromium", "chromium-sandbox"]
+nixPkgs = ["nodejs", "chromium"]
 
 [phases.install]
 cmds = ["npm install"]
 
 [start]
-cmd = "node server.js"
+cmd = "npm start"
+
+[variables]
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+PUPPETEER_EXECUTABLE_PATH = "/nix/store/*-chromium-*/bin/chromium"
