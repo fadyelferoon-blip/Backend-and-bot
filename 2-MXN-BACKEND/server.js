@@ -54,6 +54,10 @@ app.get('/', (req, res) => {
 // API Routes
 app.use('/api/signals', signalsRoutes);
 
+// Start background signal refresh
+const signalAnalyzer = require('./services/signalAnalyzer');
+signalAnalyzer.startBackgroundRefresh();
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
