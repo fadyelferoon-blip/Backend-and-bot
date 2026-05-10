@@ -167,4 +167,4 @@ class BotScraper {
   }
 }
 
-module.exports = BotScraper;
+module.exports = new BotScraper();
