@@ -10,7 +10,7 @@ class BotScraper {
     if (this.browser) return;
 
     console.log('🚀 Launching browser...');
-    
+
     // Railway Chromium configuration
     const launchOptions = {
       headless: 'new',
@@ -35,7 +35,10 @@ class BotScraper {
       console.log('📍 Using Chromium from:', process.env.PUPPETEER_EXECUTABLE_PATH);
     }
 
-    this.browser = await puppeteer.launch(launchOptions);
+    this.browser = await puppeteer.launch({
+      ...launchOptions,
+      protocolTimeout: 300000 // 5 minutes
+    });
 
     console.log('✅ Browser launched successfully');
   }
@@ -52,61 +55,76 @@ class BotScraper {
       console.log(`📡 Scraping ${orderType} signals from bot...`);
 
       const page = await this.browser.newPage();
-      
-      await page.setViewport({ width: 1280, height: 800 });
+
+      await page.setViewport({
+        width: 1280,
+        height: 800
+      });
 
       console.log(`🌐 Navigating to ${this.botUrl}...`);
+
       await page.goto(this.botUrl, {
         waitUntil: 'networkidle2',
         timeout: 60000
       });
 
       console.log('✅ Page loaded');
+
       await this.sleep(2000);
 
       // Fill form fields
       console.log('📝 Filling form fields...');
-      
+
       // Select pair: USD/MXN OTC
       await page.select('#cbAtivo', 'USD_MXN_OTC_QTX');
       await this.sleep(500);
-      
+
       // Min percentage: 100
       await page.select('#selPercentageMin', '100');
       await this.sleep(500);
-      
+
       // Max percentage: 100
       await page.select('#selPercentageMax', '100');
       await this.sleep(500);
-      
+
       // Candle time: M1
       await page.select('#selCandleTime', 'M1');
       await this.sleep(500);
-      
+
       // Days: 20
       await page.select('#selDays', '20');
       await this.sleep(500);
-      
+
       // Order type: PUT or CALL
       await page.select('#selOrderType', orderType);
       await this.sleep(500);
 
       console.log('✅ Form filled');
 
-      // Click "PROCESS DATA" button
+      // Start processing
       console.log('🔄 Processing data...');
-      await page.evaluate(() => {
-        getHistoric(); // This is the function in the bot HTML
+
+      await page.evaluate(async () => {
+        await getHistoric();
       });
 
-      // Wait for processing to complete
+      // Wait for signals to appear
       console.log('⏳ Waiting for analysis to complete...');
-      await this.sleep(5000); // Give time for analysis
 
-      // Extract signals from JavaScript variable
+      await page.waitForFunction(
+        () =>
+          window.listBestPairTimes &&
+          Array.isArray(window.listBestPairTimes) &&
+          window.listBestPairTimes.length > 0,
+        {
+          timeout: 120000
+        }
+      );
+
+      // Extract signals
       console.log('📊 Extracting signals...');
+
       const signals = await page.evaluate(() => {
-        // listBestPairTimes is the array in the bot HTML
         return listBestPairTimes.map(signal => ({
           time: signal.time,
           winrate: signal.winrate,
@@ -131,7 +149,6 @@ class BotScraper {
 
   /**
    * Get all signals (PUT and CALL)
-   * @returns {Object} { put: [], call: [] }
    */
   async getAllSignals() {
     try {
@@ -140,7 +157,9 @@ class BotScraper {
       const putSignals = await this.scrapeSignals('PUT');
       const callSignals = await this.scrapeSignals('CALL');
 
-      console.log(`✅ Total signals: ${putSignals.length} PUT, ${callSignals.length} CALL`);
+      console.log(
+        `✅ Total signals: ${putSignals.length} PUT, ${callSignals.length} CALL`
+      );
 
       return {
         put: putSignals,
@@ -158,6 +177,7 @@ class BotScraper {
     if (this.browser) {
       await this.browser.close();
       this.browser = null;
+
       console.log('🔒 Browser closed');
     }
   }
